@@ -287,7 +287,26 @@ impl MergeStrategy<number_content::I64, i64> for OptionalMergeStrategy {
 impl MergeStrategy<number_content::F64, f64> for OptionalMergeStrategy {
     fn try_merge(self, master: &mut number_content::F64, candidate: &f64) -> Result<()> {
         match master {
-            number_content::F64::Range(range) => self.try_merge(range, candidate),
+            number_content::F64::Range(range) => {
+                self.try_merge(range, candidate)?;
+
+                // Handle single-value ranges to avoid empty range errors
+                if let (Some(low), Some(high)) = (range.low, range.high) {
+                    if (low - high).abs() < f64::EPSILON {
+                        // Expand by a small amount, using a reasonable default increment
+                        let increment = if low.abs() > f64::EPSILON {
+                            // For non-zero values, add 10% or at least 1.0
+                            (low.abs() * 0.1).max(1.0)
+                        } else {
+                            // For zero or very small values, just add 1.0
+                            1.0
+                        };
+                        range.high = Some(low + increment);
+                    }
+                }
+
+                Ok(())
+            }
             number_content::F64::Constant(cst) => self.try_merge(cst, candidate),
         }
     }
@@ -318,7 +337,26 @@ impl MergeStrategy<number_content::I32, i32> for OptionalMergeStrategy {
 impl MergeStrategy<number_content::F32, f32> for OptionalMergeStrategy {
     fn try_merge(self, master: &mut number_content::F32, candidate: &f32) -> Result<()> {
         match master {
-            number_content::F32::Range(range) => self.try_merge(range, candidate),
+            number_content::F32::Range(range) => {
+                self.try_merge(range, candidate)?;
+
+                // Handle single-value ranges to avoid empty range errors
+                if let (Some(low), Some(high)) = (range.low, range.high) {
+                    if (low - high).abs() < f32::EPSILON {
+                        // Expand by a small amount, using a reasonable default increment
+                        let increment = if low.abs() > f32::EPSILON {
+                            // For non-zero values, add 10% or at least 1.0
+                            (low.abs() * 0.1).max(1.0)
+                        } else {
+                            // For zero or very small values, just add 1.0
+                            1.0
+                        };
+                        range.high = Some(low + increment);
+                    }
+                }
+
+                Ok(())
+            }
             number_content::F32::Constant(cst) => self.try_merge(cst, candidate),
         }
     }

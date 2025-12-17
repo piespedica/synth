@@ -39,7 +39,6 @@ pub struct JsonLinesStdoutExportStrategy<W> {
 
 impl<W: Write> ExportStrategy for JsonLinesStdoutExportStrategy<W> {
     fn export(&self, _namespace: Namespace, sample: SamplerOutput) -> Result<()> {
-        // TODO: Warn user if the collection field name would overwrite an existing field in a collection.
         for line in json_lines_from_sampler_output(sample, &self.collection_field_name) {
             writeln!(self.writer.borrow_mut(), "{line}").expect("failed to write jsonl line");
         }
@@ -146,6 +145,13 @@ fn json_lines_from_sampler_output(
                         serde_json::Value::Object(mut obj_values) => {
                             // If the collection generates an object, then the collection name is saved directly as
                             // a field of the object.
+
+                            if obj_values.contains_key(collection_field_name) {
+                                warn!(
+                                    "Collection field name '{}' already exists in collection '{}' and will be overwritten",
+                                    collection_field_name, collection
+                                );
+                            }
 
                             obj_values.insert(
                                 collection_field_name.to_string(),

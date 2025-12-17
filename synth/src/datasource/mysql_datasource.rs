@@ -22,19 +22,35 @@ use synth_gen::prelude::*;
 /// - MySql aliases bool and boolean data types as tinyint. We currently define all tinyint as i8.
 ///   Ideally, the user can define a way to force certain fields as bool rather than i8.
 
+pub struct MySqlConnectParams {
+    pub(crate) uri: String,
+    pub(crate) max_connections: Option<u32>,
+    pub(crate) timeout_ms: Option<u64>,
+}
+
 pub struct MySqlDataSource {
     pool: Pool<MySql>,
 }
 
 #[async_trait]
 impl DataSource for MySqlDataSource {
-    type ConnectParams = String;
+    type ConnectParams = MySqlConnectParams;
 
     fn new(connect_params: &Self::ConnectParams) -> Result<Self> {
         task::block_on(async {
-            let pool = MySqlPoolOptions::new()
-                .max_connections(3) //TODO expose this as a user config?
-                .connect(connect_params.as_str())
+            let max_connections = connect_params.max_connections.unwrap_or(3);
+
+            let mut pool_options = MySqlPoolOptions::new()
+                .max_connections(max_connections);
+
+            // Set acquire timeout if provided
+            if let Some(timeout) = connect_params.timeout_ms {
+                pool_options = pool_options
+                    .acquire_timeout(std::time::Duration::from_millis(timeout));
+            }
+
+            let pool = pool_options
+                .connect(connect_params.uri.as_str())
                 .await?;
 
             Ok::<Self, anyhow::Error>(MySqlDataSource { pool })
@@ -109,7 +125,7 @@ impl SqlxDataSource for MySqlDataSource {
                 Content::Number(NumberContent::F64(F64::Range(RangeStep::default())))
             }
             "timestamp" => Content::DateTime(DateTimeContent {
-                format: "".to_string(), // todo
+                format: "%Y-%m-%d %H:%M:%S".to_string(),
                 type_: ChronoValueType::NaiveDateTime,
                 begin: None,
                 end: None,

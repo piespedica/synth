@@ -259,6 +259,7 @@ impl Generator for ZipSeries {
 }
 
 /// v_t = C + \sum_{i=1}^{N} \alpha_i v_{t - i} + \sum_{j=0}^{M} \beta_j \epsilon_{t-j} , \beta_0 = 1
+#[allow(dead_code)]
 pub struct AutoCorrelatedSeries {
     alpha: Vec<Duration>,
     beta: Vec<Duration>,

@@ -18,6 +18,8 @@ impl ExportStrategy for PostgresExportStrategy {
         let connect_params = PostgresConnectParams {
             uri: self.uri_string.clone(),
             schema: self.schema.clone(),
+            max_connections: None, // Use default (3)
+            timeout_ms: None, // Export doesn't use timeout from command line
         };
 
         let datasource = PostgresDataSource::new(&connect_params)?;
@@ -30,6 +32,7 @@ impl ExportStrategy for PostgresExportStrategy {
 pub struct PostgresImportStrategy {
     pub uri_string: String,
     pub schema: Option<String>,
+    pub timeout_ms: Option<u64>,
 }
 
 impl ImportStrategy for PostgresImportStrategy {
@@ -37,6 +40,8 @@ impl ImportStrategy for PostgresImportStrategy {
         let connect_params = PostgresConnectParams {
             uri: self.uri_string.clone(),
             schema: self.schema.clone(),
+            max_connections: None, // Use default (3)
+            timeout_ms: self.timeout_ms,
         };
 
         let datasource = PostgresDataSource::new(&connect_params)?;

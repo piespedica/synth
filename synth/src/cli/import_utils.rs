@@ -115,16 +115,8 @@ where
     for table_name in table_names.iter() {
         let primary_keys = task::block_on(get_primary_keys(datasource, table_name.to_string()))?;
 
-        if primary_keys.len() > 1 {
-            bail!(
-                "{} primary keys found at collection {}. Synth does not currently support \
-            composite primary keys.",
-                primary_keys.len(),
-                table_name
-            )
-        }
-
-        if let Some(primary_key) = primary_keys.first() {
+        // Handle composite primary keys by making each column unique
+        for primary_key in primary_keys.iter() {
             let field = FieldRef::new(format!(
                 "{}.content.{}",
                 table_name, primary_key.column_name

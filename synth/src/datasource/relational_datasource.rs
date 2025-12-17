@@ -11,11 +11,10 @@ use synth_gen::value::Number;
 
 const DEFAULT_INSERT_BATCH_SIZE: usize = 1000;
 
-//TODO: Remove this once https://github.com/rust-lang/rust/issues/88900 gets fixed
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ColumnInfo {
     pub(crate) column_name: String,
+    #[allow(dead_code)]
     pub(crate) ordinal_position: i32,
     pub(crate) is_nullable: bool,
     pub(crate) is_custom_type: bool,
@@ -23,10 +22,10 @@ pub struct ColumnInfo {
     pub(crate) character_maximum_length: Option<i32>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct PrimaryKey {
     pub(crate) column_name: String,
+    #[allow(dead_code)]
     pub(crate) type_name: String,
 }
 

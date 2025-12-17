@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 use async_std::sync::Arc;
 use async_std::task;
 use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use sqlx::postgres::{PgColumn, PgPoolOptions, PgRow, PgTypeInfo, PgTypeKind};
@@ -13,14 +14,16 @@ use sqlx::{Column, Executor, Pool, Postgres, Row, TypeInfo};
 use std::collections::BTreeMap;
 use synth_core::schema::number_content::{F32, F64, I16, I32, I64};
 use synth_core::schema::{
-    ArrayContent, BoolContent, Categorical, ChronoValue, ChronoValueAndFormat, ChronoValueType,
-    DateTimeContent, NumberContent, ObjectContent, RangeStep, RegexContent, StringContent, Uuid,
+    ArrayContent, BoolContent, ChronoValue, ChronoValueAndFormat, ChronoValueType, DateTimeContent,
+    NumberContent, ObjectContent, RangeStep, RegexContent, StringContent, Uuid,
 };
 use synth_core::{Content, Value};
 
 pub struct PostgresConnectParams {
     pub(crate) uri: String,
     pub(crate) schema: Option<String>,
+    pub(crate) max_connections: Option<u32>,
+    pub(crate) timeout_ms: Option<u64>,
 }
 
 pub struct PostgresDataSource {
@@ -40,9 +43,19 @@ impl DataSource for PostgresDataSource {
                 .clone()
                 .unwrap_or_else(|| "public".to_string());
 
+            let max_connections = connect_params.max_connections.unwrap_or(3);
+
             let mut arc = Arc::new(schema.clone());
-            let pool = PgPoolOptions::new()
-                .max_connections(3) //TODO expose this as a user config?
+            let mut pool_options = PgPoolOptions::new()
+                .max_connections(max_connections);
+
+            // Set acquire timeout if provided
+            if let Some(timeout) = connect_params.timeout_ms {
+                pool_options = pool_options
+                    .acquire_timeout(std::time::Duration::from_millis(timeout));
+            }
+
+            let pool = pool_options
                 .after_connect(move |conn, _meta| {
                     let schema = arc.clone();
                     Box::pin(async move {
@@ -56,8 +69,16 @@ impl DataSource for PostgresDataSource {
 
             // Needed for queries that require explicit synchronous order, i.e. setseed + random
             arc = Arc::new(schema.clone());
-            let single_thread_pool = PgPoolOptions::new()
-                .max_connections(1)
+            let mut single_pool_options = PgPoolOptions::new()
+                .max_connections(1);
+
+            // Set acquire timeout if provided
+            if let Some(timeout) = connect_params.timeout_ms {
+                single_pool_options = single_pool_options
+                    .acquire_timeout(std::time::Duration::from_millis(timeout));
+            }
+
+            let single_thread_pool = single_pool_options
                 .after_connect(move |conn, _meta| {
                     let schema = arc.clone();
                     Box::pin(async move {
@@ -178,8 +199,11 @@ impl SqlxDataSource for PostgresDataSource {
 
     fn decode_to_content(&self, column_info: &ColumnInfo) -> Result<Content> {
         if column_info.is_custom_type {
-            return Ok(Content::String(StringContent::Categorical(
-                Categorical::default(),
+            // Use a pattern instead of empty categorical for custom types
+            // This will be updated with actual values during populate_namespace_values if data exists
+            let pattern = "[a-zA-Z0-9_]{1,50}".to_string();
+            return Ok(Content::String(StringContent::Pattern(
+                RegexContent::pattern(pattern).context("pattern will always compile")?,
             )));
         }
 
@@ -232,6 +256,13 @@ impl SqlxDataSource for PostgresDataSource {
                 fields: BTreeMap::new(),
             }),
             "uuid" => Content::String(StringContent::Uuid(Uuid)),
+            "bytea" => {
+                // bytea is binary data, we'll represent it as a base64 encoded string
+                Content::String(StringContent::Pattern(
+                    RegexContent::pattern("[A-Za-z0-9+/]{0,100}={0,2}".to_string())
+                        .context("pattern will always compile")?,
+                ))
+            }
             _ => {
                 if let Some(data_type) = column_info.data_type.strip_prefix('_') {
                     let mut column_info = column_info.clone();
@@ -475,6 +506,25 @@ fn try_match_value(row: &PgRow, column: &PgColumn) -> Result<Value> {
                         .collect()
                 })?,
         ),
+        "bytea" => {
+            // bytea is binary data, encode it as base64 string
+            let bytes = row.try_get::<Vec<u8>, &str>(column.name())?;
+            Value::String(BASE64_STANDARD.encode(&bytes))
+        }
+        "uuid" => {
+            // UUID is returned as a string by sqlx
+            Value::String(row.try_get::<String, &str>(column.name())?)
+        }
+        "bytea[]" => {
+            // Array of bytea, encode each as base64 string
+            let vec_bytes = row.try_get::<Vec<Vec<u8>>, &str>(column.name())?;
+            Value::Array(
+                vec_bytes
+                    .into_iter()
+                    .map(|bytes| Value::String(BASE64_STANDARD.encode(&bytes)))
+                    .collect(),
+            )
+        }
         _ => {
             bail!(
                 "Could not convert value. Converter not implemented for {}",

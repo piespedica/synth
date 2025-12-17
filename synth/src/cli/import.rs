@@ -38,12 +38,15 @@ impl TryFrom<DataSourceParams<'_>> for Box<dyn ImportStrategy> {
             "postgres" | "postgresql" => Box::new(PostgresImportStrategy {
                 uri_string: params.uri.to_string(),
                 schema: params.schema,
+                timeout_ms: params.timeout_ms,
             }),
             "mongodb" => Box::new(MongoImportStrategy {
                 uri_string: params.uri.to_string(),
+                timeout_ms: params.timeout_ms,
             }),
             "mysql" | "mariadb" => Box::new(MySqlImportStrategy {
                 uri_string: params.uri.to_string(),
+                timeout_ms: params.timeout_ms,
             }),
             "json" => {
                 if params.uri.path() == "" {
@@ -72,8 +75,7 @@ impl TryFrom<DataSourceParams<'_>> for Box<dyn ImportStrategy> {
                 }
             }
             "csv" => {
-                // TODO: Would rather have this work as a flag e.g. `csv:directory?no_header_row` implies no header row
-                // in CSV data, otherwise assume there will be one.
+                // Use ?header_row=false to indicate CSV has no header row, otherwise assume there will be one
                 let expect_header_row = query
                     .get("header_row")
                     .map(|x| *x != "false")

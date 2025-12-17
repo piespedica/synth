@@ -25,11 +25,17 @@ pub struct MongoExportStrategy {
 #[derive(Clone, Debug)]
 pub struct MongoImportStrategy {
     pub uri_string: String,
+    pub timeout_ms: Option<u64>,
 }
 
 impl ImportStrategy for MongoImportStrategy {
     fn import(&self) -> Result<Namespace> {
-        let client_options = ClientOptions::parse(&self.uri_string)?;
+        let mut client_options = ClientOptions::parse(&self.uri_string)?;
+
+        // Set connection timeout if provided
+        if let Some(timeout) = self.timeout_ms {
+            client_options.connect_timeout = Some(std::time::Duration::from_millis(timeout));
+        }
 
         info!("Connecting to database at {} ...", &self.uri_string);
 

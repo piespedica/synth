@@ -116,13 +116,11 @@ impl<'w> Cli {
     }
 
     fn import(&self, cmd: ImportCommand) -> Result<()> {
-        // TODO: If ns exists and no collection: break
-        // If collection and ns exists and collection exists: break
-
         let import_strategy: Box<dyn ImportStrategy> = DataSourceParams {
             uri: URI::try_from(cmd.from.as_str())
                 .with_context(|| format!("Parsing import URI '{}'", cmd.from))?,
             schema: cmd.schema,
+            timeout_ms: cmd.timeout,
         }
         .try_into()?;
 
@@ -176,6 +174,7 @@ impl<'w> Cli {
             uri: URI::try_from(cmd.to.as_str())
                 .with_context(|| format!("Parsing generation URI '{}'", cmd.to))?,
             schema: cmd.schema,
+            timeout_ms: None, // Generate command doesn't have timeout parameter
         }
         .try_into()?;
 
@@ -318,6 +317,11 @@ pub struct ImportCommand {
     )]
     #[serde(skip)]
     pub schema: Option<String>,
+    #[structopt(
+        long,
+        help = "Connection timeout in milliseconds for database imports. If not specified, uses default timeout."
+    )]
+    pub timeout: Option<u64>,
 }
 
 #[cfg(feature = "telemetry")]
